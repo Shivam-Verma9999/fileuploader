@@ -1,0 +1,15 @@
+{
+  "name": "fileuploader",
+  "version": "1.0.0",
+  "description": "Simple nodejs file uplaoder",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Shivam Verma",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "mssql": "^7.2.1"
+  }
+}

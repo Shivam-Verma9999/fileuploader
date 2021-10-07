@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File uploader</title>
+</head>
+<body>
+    File: <input type="file" id="file" name ="f"/>
+    <button id="btnUpload"  >Read and Upload</button>
+    <div id="progress"></div>
+
+    <script>
+        const btnUpload = document.getElementById("btnUpload");
+        const progess = document.getElementById("progress");
+        const file =  document.getElementById("file");
+
+        const CHUNK_SIZE = 3139587;
+        let chunkID = 0;
+        let CHUNK_COUNT =0;
+        let Files;
+        let registeredFileId = 0;
+        let reqNumber = 0;
+        const maxReg = 7;
+                
+        function upload(data, localChunkID, callBack){
+            console.log('chunk id : ', localChunkID, " total chunks :", CHUNK_COUNT);
+            let chunk = data.target.result.slice(localChunkID*CHUNK_SIZE, localChunkID * CHUNK_SIZE + CHUNK_SIZE);
+            console.log("got chunk: ", localChunkID);
+            fetch("http://192.168.1.4:8080/upload", {
+                method: "POST",
+                headers : {
+                    "content-type" : "application/octet-stream",
+                    "file-name" : Files.name,
+                    "chunk-id" : localChunkID,
+                    "file-id" : registeredFileId,
+                    "content-length" : chunk.size
+                },
+                body: chunk
+            }).then(()=>{
+                console.log(`Chunk id: ${localChunkID}`);
+                progess.innerHTML = `${Math.round(localChunkID*100/CHUNK_COUNT)} %`;
+                callBack();
+            }).catch(err=>{
+                console.log("ERROR: ", err);
+            });
+        }
+        function uploadComplete(){
+            fetch("http://192.168.1.4:8080/uploadComplete", {
+                method: "POST",
+                headers: {
+                    "file-id" : registeredFileId
+                }
+            }).then(data => data.json())
+            .then(data => {console.log(data)});
+        }
+        async function RegisterFile(){
+            let res = await fetch("http://192.168.1.4:8080/register", { method: "POST",
+                headers : {
+                    "file-name" : Files.name
+                },
+                body: ''} )
+            res =await res.json();
+            console.log(`File registered: ${Files.name}`, res);
+            return res.fileId;
+        }
+
+        btnUpload.addEventListener("click" , async  ()=> {
+            
+            const reader = new FileReader();
+            Files = file.files[0];
+
+            registeredFileId = await RegisterFile();
+            if(!Number.isInteger(registeredFileId)){
+                console.error("Cant register the file successfully: ", registeredFileId);
+                return ;
+            }
+            console.log(`Chunking Filsize: ${Files.size}, CHUNKSIZE: ${CHUNK_SIZE} `);
+            CHUNK_COUNT = Files.size / CHUNK_SIZE;
+            console.log("chunk count==", CHUNK_COUNT);
+            reader.onload =   (data) => { 
+                console.log("Onload...");
+                let buckets = new Array(maxReg).fill(false);
+
+                function manager() {
+                    console.log('starting manager.. current chunk: ', chunkID );
+                    
+                    for(let i =0 ;i < maxReg; i++ ) {
+                        console.log('checking for chunkID: ', chunkID);
+                        let assigned = false;
+                        if(!buckets[i] && chunkID < (CHUNK_COUNT+1)){ 
+                            console.log("assigning bucket: ",i, " with chunkID ", chunkID);
+                            buckets[i] = true;
+                            assigned = true;
+                            upload(data,chunkID,
+                            ()=> {console.log("removing bucket : ", i); buckets[i] = false;}
+                            );
+                        }
+                        if(chunkID >= (CHUNK_COUNT+1)){
+                            uploadComplete();
+                            return;
+                        }
+                        if(assigned)chunkID++;
+                    }
+                    setTimeout(manager,500);
+                }
+                manager();
+
+            }
+            console.log("going to read buffer file");
+            reader.readAsArrayBuffer(Files);
+        })
+
+    </script>
+</body>
+</html>
